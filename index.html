@@ -114,8 +114,8 @@ async function home(p) {
 }
 
 async function detail(id) {
-  const { data: l } = await sb.from('listings').select('*,profiles(id,name,avatar_url,city,whatsapp),categories(name)').eq('id', id).single();
-  if (!l) return page('Anúncio não encontrado', '');
+  const { data: l, error: le } = await sb.from('listings').select('*,profiles!listings_user_id_fkey(id,name,avatar_url,city,whatsapp),categories(name)').eq('id', id).single();
+  if (!l) return page('Anúncio não encontrado', le ? 'Detalhe técnico: ' + le.message : '');
   const [fv, sim] = await Promise.all([me ? sb.from('favorites').select('listing_id').eq('user_id', me.id).eq('listing_id', id) : { data: [] }, sb.from('listings').select('*').eq('status', 'active').eq('category_id', l.category_id).neq('id', id).limit(4)]);
   const own = me?.id == l.user_id, wa = (l.profiles.whatsapp || '').replace(/\D/g, '');
   app.innerHTML = `<div class="two"><div class="gal"><img id="big" src="${esc(l.images[0])}"><div class="thumbs">${l.images.map(i => `<img src="${esc(i)}" onclick="big.src=this.src">`).join('')}</div></div>
@@ -202,7 +202,7 @@ async function admin() {
   const cnt = (t, f) => { let q = sb.from(t).select('*', { count: 'exact', head: true }); return (f ? f(q) : q).then(r => r.count ?? 0) };
   const since = new Date(Date.now() - 7 * 864e5).toISOString();
   const [u, a, pend, rep, sold, nu, na, ls, rs, us] = await Promise.all([cnt('profiles'), cnt('listings'), cnt('listings', q => q.eq('status', 'pending')), cnt('reports'), cnt('listings', q => q.eq('status', 'sold')), cnt('profiles', q => q.gte('created_at', since)), cnt('listings', q => q.gte('created_at', since)), sb.from('listings').select('*').neq('status', 'removed').order('created_at', { ascending: false }).limit(30), sb.from('reports').select('*,listings(title)').order('created_at', { ascending: false }).limit(20), sb.from('profiles').select('*').order('created_at', { ascending: false }).limit(20)]);
-  const cm = (await sb.from('commissions').select('*,profiles(name)').order('created_at', { ascending: false }).limit(50)).data || [];
+  const cm = (await sb.from('commissions').select('*,profiles!commissions_seller_id_fkey(name)').order('created_at', { ascending: false }).limit(50)).data || [];
   const pi = (await sb.from('settings').select('value').eq('key', 'payment_info').maybeSingle()).data?.value || '';
   const sum = st => cm.filter(c => c.status == st).reduce((t, c) => t + Number(c.amount), 0);
   const S = (n, l) => `<div class="stat"><b>${n}</b>${l}</div>`;
