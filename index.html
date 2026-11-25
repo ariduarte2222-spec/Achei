@@ -69,8 +69,7 @@ sb.auth.onAuthStateChange((_, s) => { setTimeout(async () => {
 }, 0); });
 function authBox(mode = 'in') {
   const up = mode == 'up';
-  app.innerHTML = `<form class="f" id="af"><h2>${up ? 'Criar conta' : 'Entrar'}</h2>${up ? '<input name="name" placeholder="Nome" required minlength="2">' : ''}<input name="email" type="email" placeholder="E-mail" required><input name="pw" type="password" placeholder="Senha (mín. 6)" required minlength="6"><button class="btn p">${up ? 'Cadastrar' : 'Entrar'}</button><button type="button" class="btn" id="g">Continuar com Google</button><a class="muted" href="javascript:authBox('${up ? 'in' : 'up'}')">${up ? 'Já tenho conta' : 'Criar conta'}</a></form>`;
-  $('#g').onclick = () => sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin } });
+  app.innerHTML = `<form class="f" id="af"><h2>${up ? 'Criar conta' : 'Entrar'}</h2>${up ? '<input name="name" placeholder="Nome" required minlength="2">' : ''}<input name="email" type="email" placeholder="E-mail" required><input name="pw" type="password" placeholder="Senha (mín. 6)" required minlength="6"><button class="btn p">${up ? 'Cadastrar' : 'Entrar'}</button><a class="muted" href="javascript:authBox('${up ? 'in' : 'up'}')">${up ? 'Já tenho conta' : 'Criar conta'}</a></form>`;
   $('#af').onsubmit = async e => {
     e.preventDefault(); const f = e.target;
     const r = up ? await sb.auth.signUp({ email: f.email.value, password: f.pw.value, options: { data: { full_name: f.name.value } } })
@@ -124,7 +123,7 @@ async function detail(id) {
   <p style="margin:14px 0;white-space:pre-wrap;line-height:1.6">${esc(l.description)}</p>
   <a href="#/u/${l.profiles.id}" class="row" style="justify-content:flex-start;gap:12px">${avatar(l.profiles)}<div><b>${esc(l.profiles.name)}</b><br><small class="muted">${esc(l.profiles.city || '')}</small></div></a>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-  ${wa && !own ? `<a class="btn p" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent('Olá! Vi seu anúncio no ACHEI: ' + l.title)}">WhatsApp</a>` : ''}
+  ${!own && wa ? `<a class="btn" style="background:#25D366;border-color:#25D366;color:#fff;font-size:16px;padding:12px 22px" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent('Olá! Tenho interesse no anúncio "' + l.title + '" (' + gs(l.price) + ') que vi no ACHEI: ' + location.origin + '/#/l/' + id)}">Tenho interesse · WhatsApp</a>` : ''}${!own && !wa ? '<p class="muted" style="width:100%">Este vendedor ainda não informou o WhatsApp. Use o botão Mensagem.</p>' : ''}
   ${own ? `<a class="btn" href="#/edit/${id}">Editar</a>` : `<button class="btn" id="fav">${fv.data?.length ? '♥ Favoritado' : '♡ Favoritar'}</button><button class="btn" id="msg">Mensagem</button><button class="btn d" id="rep">Denunciar</button>`}</div></div></div>
   <h2>Produtos semelhantes</h2><div class="grid">${sim.data?.map(card).join('') || '<p class="muted">Sem similares.</p>'}</div>`;
   if (own) return;
@@ -158,6 +157,7 @@ async function form(id) {
   <select name="category_id" required><option value="">Categoria</option>${cats.map(c => `<option value="${c.id}" ${c.id == l.category_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
   ${cats.length ? '' : '<p style="color:#c00;font-size:13px">Categorias não carregaram: ' + esc(catErr) + ' <a href="javascript:cats=[];form()"><u>Tentar de novo</u></a></p>'}<input name="subcategory" placeholder="Subcategoria" value="${esc(l.subcategory)}"><input name="city" placeholder="Cidade" required value="${esc(l.city)}">
   <select name="department" required><option value="">Departamento</option>${opts(DEPTS, l.department)}</select><select name="condition">${opts(CONDS, l.condition)}</select>
+  ${id ? '' : '<input name="whatsapp" inputmode="tel" placeholder="Seu WhatsApp com DDI (ex: 595981123456)" required value="' + esc(prof?.whatsapp) + '"><small class="muted">Seu WhatsApp ficará visível aos interessados nos seus anúncios.</small>'}
   ${id ? '' : '<label class="muted">Fotos (1 a 10)<input name="files" type="file" accept="image/*" multiple required></label>'}
   ${id ? '' : '<p class="muted" style="font-size:13px">Anunciar é grátis. Quando o produto for vendido, o ACHEI cobra do vendedor uma taxa de 10% do valor do produto.</p>'}<button class="btn p" id="sv">${id ? 'Salvar' : 'Publicar'}</button></form>`;
   $('#lf').onsubmit = async e => {
@@ -165,6 +165,8 @@ async function form(id) {
     const d = { title: f.title.value.trim(), description: f.description.value.trim(), price: +f.price.value, category_id: +f.category_id.value, subcategory: f.subcategory.value.trim() || null, city: f.city.value.trim(), department: f.department.value, condition: f.condition.value };
     try {
       if (id) { const r = await sb.from('listings').update(d).eq('id', id); if (r.error) throw r.error; toast('Salvo'); return location.hash = '#/l/' + id }
+      const wa = f.whatsapp.value.replace(/\D/g, ''); if (wa.length < 8 || wa.length > 15) throw { message: 'Informe seu WhatsApp com DDI, só números (ex: 595981123456)' };
+      if (wa !== (prof?.whatsapp || '')) { const pr = await sb.from('profiles').update({ whatsapp: wa }).eq('id', me.id); if (pr.error) throw pr.error; if (prof) prof.whatsapp = wa }
       const fl = [...f.files.files]; if (!fl.length || fl.length > 10) throw { message: 'Envie de 1 a 10 fotos' };
       if (fl.some(x => !x.type.startsWith('image/') || x.size > 5e6)) throw { message: 'Use apenas imagens de até 5 MB' };
       d.images = []; for (const x of fl) { const path = `${me.id}/${crypto.randomUUID()}.${x.name.split('.').pop()}`; const u = await sb.storage.from('listing-images').upload(path, x); if (u.error) throw u.error; d.images.push(sb.storage.from('listing-images').getPublicUrl(path).data.publicUrl) }
@@ -193,7 +195,21 @@ async function panel(tab = 'ads') {
       if (f.av.files[0]) { const path = `${me.id}/avatar-${Date.now()}`; const u = await sb.storage.from('listing-images').upload(path, f.av.files[0]); if (!u.error) d.avatar_url = sb.storage.from('listing-images').getPublicUrl(path).data.publicUrl }
       const r = await sb.from('profiles').update(d).eq('id', me.id); if (!r.error) Object.assign(prof, d); toast(r.error ? r.error.message : 'Perfil salvo') } }
 }
-async function mark(id, status, price) { if (status == 'sold' && !confirm('Ao marcar como vendido, será registrada a taxa do ACHEI: 10% = ' + gs(Math.round(price * 0.1)) + '. Continuar?')) return; const r = await sb.from('listings').update({ status }).eq('id', id); if (r.error) toast(r.error.message); panel('ads') }
+async function mark(id, status, price) {
+  if (status == 'sold' && !confirm('Ao marcar como vendido, será registrada a taxa do ACHEI: 10% = ' + gs(Math.round(price * 0.1)) + '. Continuar?')) return;
+  const r = await sb.from('listings').update({ status }).eq('id', id);
+  if (r.error) toast(r.error.message);
+  else if (status == 'sold') { const q = await sb.from('settings').select('value').eq('key', 'payment_info').maybeSingle(); showPay(Math.round(price * 0.1), q.data?.value || '') }
+  panel('ads');
+}
+function showPay(amount, info) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;background:#0007;z-index:20;display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML = `<div style="background:#fff;border-radius:20px;padding:22px;max-width:420px;width:100%"><h2 style="margin:0 0 8px">Parabéns pela venda! 🎉</h2><p>Pague a taxa do ACHEI de <b style="color:var(--o)">${gs(amount)}</b> (10%) usando:</p><p style="background:var(--bg);border-radius:12px;padding:12px;margin:10px 0;white-space:pre-wrap;word-break:break-all">${esc(info || 'Combine o pagamento com o administrador.')}</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn p" id="pcp">Copiar Pix</button><button class="btn" id="pcl">Fechar</button></div><p class="muted" style="font-size:13px;margin-top:10px">Depois de pagar, avise o administrador. Você também encontra isso em Minha conta → Comissões.</p></div>`;
+  document.body.appendChild(d);
+  d.querySelector('#pcl').onclick = () => d.remove();
+  d.querySelector('#pcp').onclick = () => { const b = d.querySelector('#pcp'); (navigator.clipboard ? navigator.clipboard.writeText(info || '') : Promise.reject()).then(() => b.textContent = 'Copiado!').catch(() => b.textContent = 'Copie o texto acima') };
+}
 async function del(id) { if (!confirm('Excluir este anúncio?')) return; const r = await sb.from('listings').delete().eq('id', id); toast(r.error ? r.error.message : 'Excluído'); panel('ads') }
 async function reply(lid, to) { const b = prompt('Resposta:'); if (b?.trim()) { const r = await sb.from('messages').insert({ listing_id: lid, sender_id: me.id, receiver_id: to, body: b.trim() }); toast(r.error ? r.error.message : 'Enviada') } }
 
@@ -202,12 +218,16 @@ async function admin() {
   const cnt = (t, f) => { let q = sb.from(t).select('*', { count: 'exact', head: true }); return (f ? f(q) : q).then(r => r.count ?? 0) };
   const since = new Date(Date.now() - 7 * 864e5).toISOString();
   const [u, a, pend, rep, sold, nu, na, ls, rs, us] = await Promise.all([cnt('profiles'), cnt('listings'), cnt('listings', q => q.eq('status', 'pending')), cnt('reports'), cnt('listings', q => q.eq('status', 'sold')), cnt('profiles', q => q.gte('created_at', since)), cnt('listings', q => q.gte('created_at', since)), sb.from('listings').select('*').neq('status', 'removed').order('created_at', { ascending: false }).limit(30), sb.from('reports').select('*,listings(title)').order('created_at', { ascending: false }).limit(20), sb.from('profiles').select('*').order('created_at', { ascending: false }).limit(20)]);
-  const cm = (await sb.from('commissions').select('*,profiles!commissions_seller_id_fkey(name)').order('created_at', { ascending: false }).limit(50)).data || [];
+  const cm = (await sb.from('commissions').select('*,profiles!commissions_seller_id_fkey(name)').order('created_at', { ascending: false }).limit(1000)).data || [];
   const pi = (await sb.from('settings').select('value').eq('key', 'payment_info').maybeSingle()).data?.value || '';
   const sum = st => cm.filter(c => c.status == st).reduce((t, c) => t + Number(c.amount), 0);
+  const bs = {};
+  cm.forEach(c => { const o = bs[c.seller_id] || (bs[c.seller_id] = { id: c.seller_id, name: c.profiles?.name || 'Usuário', n: 0, pend: 0, paid: 0, items: [] }); o.n++; o[c.status == 'paid' ? 'paid' : 'pend'] += Number(c.amount); o.items.push(c) });
+  const sl = Object.values(bs).sort((a, b) => b.pend - a.pend), mx = Math.max(1, ...sl.map(x => x.pend + x.paid));
+  const chart = sl.map(x => `<div style="border:1px solid var(--b);border-radius:16px;padding:12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${esc(x.name)}</b><span>${x.n} venda(s) · deve <b style="color:var(--o)">${gs(x.pend)}</b></span></div><div style="display:flex;height:14px;border-radius:99px;overflow:hidden;background:var(--bg);margin:8px 0"><div style="width:${x.paid / mx * 100}%;background:#25D366"></div><div style="width:${x.pend / mx * 100}%;background:var(--o)"></div></div><small class="muted">Verde: pago ${gs(x.paid)} · Laranja: a pagar ${gs(x.pend)}</small>${x.pend ? ` <button class="btn s" onclick="adm('cps','${x.id}')">Marcar tudo como pago</button>` : ''}<details style="margin-top:8px"><summary>Produtos vendidos</summary>${x.items.map(c => `<div class="row"><span>${esc(c.title)} · ${gs(c.amount)} <small class="muted">${c.status == 'paid' ? 'pago' : 'pendente'} · ${ago(c.created_at)}</small></span>${c.status == 'pending' ? `<button class="btn s" onclick="adm('cp','${c.id}')">Marcar pago</button>` : ''}</div>`).join('')}</details></div>`).join('') || '<p class="muted">Nenhuma venda registrada ainda.</p>';
   const S = (n, l) => `<div class="stat"><b>${n}</b>${l}</div>`;
   app.innerHTML = `<h2>Painel administrativo</h2><div class="stats">${S(u, 'Usuários')}${S(a, 'Anúncios')}${S(pend, 'Pendentes')}${S(rep, 'Denunciados')}${S(sold, 'Vendidos')}${S('+' + nu, 'Usuários (7 dias)')}${S('+' + na, 'Anúncios (7 dias)')}${S(gs(sum('pending')), 'Comissões a receber')}${S(gs(sum('paid')), 'Comissões recebidas')}</div>
-  <h2>Comissões (10% por venda)</h2><p class="muted">Dados de pagamento mostrados aos vendedores: ${esc(pi) || 'não definidos'} <button class="btn s" onclick="adm('pi')">Editar</button></p>${cm.map(c => `<div class="row"><span><b>${esc(c.profiles?.name)}</b> · ${esc(c.title)} · ${gs(c.amount)}<br><small class="muted">${c.status == 'paid' ? 'pago' : 'pendente'} · ${ago(c.created_at)}</small></span>${c.status == 'pending' ? `<button class="btn s" onclick="adm('cp','${c.id}')">Marcar pago</button>` : ''}</div>`).join('') || '<p class="muted">Nenhuma comissão ainda.</p>'}
+  <h2>Comissões (10% por venda)</h2><p class="muted">Dados de pagamento mostrados aos vendedores: ${esc(pi) || 'não definidos'} <button class="btn s" onclick="adm('pi')">Editar</button></p>${chart}
   <h2>Denúncias</h2>${rs.data?.map(r => `<div class="row"><span><a href="#/l/${r.listing_id}"><b>${esc(r.listings?.title)}</b></a><br><small class="muted">${esc(r.reason)}</small></span><span><button class="btn s d" onclick="adm('rm','${r.listing_id}')">Remover anúncio</button> <button class="btn s" onclick="adm('dr','${r.id}')">Descartar</button></span></div>`).join('') || '<p class="muted">Sem denúncias.</p>'}
   <h2>Anúncios e destaques</h2>${ls.data?.map(l => `<div class="row"><a href="#/l/${l.id}">${esc(l.title)} <small class="muted">(${l.status})</small></a><span><button class="btn s" onclick="adm('ft','${l.id}',${!l.featured})">${l.featured ? 'Tirar destaque' : 'Destacar'}</button> ${l.status == 'pending' ? `<button class="btn s" onclick="adm('ok','${l.id}')">Aprovar</button>` : ''} <button class="btn s d" onclick="adm('rm','${l.id}')">Remover</button></span></div>`).join('')}
   <h2>Categorias</h2>${cats.map(c => `<div class="row"><span>${c.icon} ${esc(c.name)}</span><button class="btn s d" onclick="adm('cd',${c.id})">Excluir</button></div>`).join('')}<button class="btn s" onclick="adm('ca')">+ Nova categoria</button>
@@ -219,7 +239,8 @@ async function adm(op, id, v) {
   if (op == 'ft') r = await sb.from('listings').update({ featured: v }).eq('id', id);
   if (op == 'dr') r = await sb.from('reports').delete().eq('id', id);
   if (op == 'cp') r = await sb.from('commissions').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', id);
-  if (op == 'pi') { const v = prompt('Dados de pagamento (Pix, conta, WhatsApp...):'); if (v === null) return; r = await sb.from('settings').upsert({ key: 'payment_info', value: v.slice(0, 500) }); }
+  if (op == 'cps') r = await sb.from('commissions').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('seller_id', id).eq('status', 'pending');
+  if (op == 'pi') { const v = prompt('Sua chave Pix e o nome do titular (isso aparece para o vendedor quando ele marcar uma venda):'); if (v === null) return; r = await sb.from('settings').upsert({ key: 'payment_info', value: v.slice(0, 500) }); }
   if (op == 'cd') { if (!confirm('Excluir categoria?')) return; r = await sb.from('categories').delete().eq('id', id); cats = [] }
   if (op == 'ca') { const n = prompt('Nome da categoria:'); if (!n) return; r = await sb.from('categories').insert({ name: n.trim(), icon: prompt('Emoji:') || '📦' }); cats = [] }
   if (r?.error) toast(r.error.message); if (!cats.length) cats = (await sb.from('categories').select('*').order('id')).data; admin();
